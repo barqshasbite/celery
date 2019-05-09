@@ -2,6 +2,7 @@
 """Redis result store backend."""
 from __future__ import absolute_import, unicode_literals
 
+import threading
 import time
 from functools import partial
 from ssl import CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
@@ -83,6 +84,7 @@ logger = get_logger(__name__)
 
 class ResultConsumer(BaseResultConsumer):
     _pubsub = None
+    _pubsub_lock = threading.Lock()
 
     def __init__(self, *args, **kwargs):
         super(ResultConsumer, self).__init__(*args, **kwargs)
@@ -139,13 +141,15 @@ class ResultConsumer(BaseResultConsumer):
         key = self._get_key_for_task(task_id)
         if key not in self.subscribed_to:
             self.subscribed_to.add(key)
-            self._pubsub.subscribe(key)
+            with self._pubsub_lock:
+                self._pubsub.subscribe(key)
 
     def cancel_for(self, task_id):
         if self._pubsub:
             key = self._get_key_for_task(task_id)
             self.subscribed_to.discard(key)
-            self._pubsub.unsubscribe(key)
+            with self._pubsub_lock:
+                self._pubsub.unsubscribe(key)
 
 
 class RedisBackend(BaseKeyValueStoreBackend, AsyncBackendMixin):
